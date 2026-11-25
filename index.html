@@ -189,12 +189,12 @@ function parseText(raw,today,known){
 /*END*/
 /* Standort */
 function locate(cb){
-  if(!navigator.geolocation)return cb('');
+  if(!navigator.geolocation||!navigator.onLine)return cb('');
   navigator.geolocation.getCurrentPosition(async p=>{
     const{latitude:la,longitude:lo}=p.coords;
     try{const r=await fetch('https://nominatim.openstreetmap.org/reverse?format=json&zoom=16&accept-language=de&lat='+la+'&lon='+lo);const j=await r.json();const a=j.address||{};
       cb([a.road&&(a.road+(a.house_number?' '+a.house_number:'')),a.village||a.town||a.city||a.municipality].filter(Boolean).join(', ')||la.toFixed(4)+', '+lo.toFixed(4))}
-    catch(e){cb(la.toFixed(4)+', '+lo.toFixed(4))}
+    catch(e){cb('')}
   },()=>cb(''),{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
 }
 
@@ -207,7 +207,7 @@ function speak(onText,btn,onLive){
   btn.classList.add('on');btn.textContent='🎤 Ich höre zu … (drücken = fertig)';
   let done=0;
   rec.onresult=e=>{let live='';for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal){if(i>=done){done=i+1;const t=r[0].transcript.trim();if(t)onText(t)}}else live+=r[0].transcript}if(onLive)onLive(live)};
-  rec.onerror=ev=>{if(ev.error==='not-allowed')toast('Mikrofon bitte erlauben');else if(ev.error!=='no-speech'&&ev.error!=='aborted')toast('Nicht verstanden, bitte nochmal')};
+  rec.onerror=ev=>{if(ev.error==='network'){toast('Ohne Internet: bitte das Mikro auf der Tastatur drücken');const t=document.getElementById('tt')||document.getElementById('ft');if(t)t.focus()}else if(ev.error==='not-allowed')toast('Mikrofon bitte erlauben');else if(ev.error!=='no-speech'&&ev.error!=='aborted')toast('Nicht verstanden, bitte nochmal')};
   rec.onend=()=>{rec=null;if(onLive)onLive('');btn.classList.remove('on');btn.textContent='🎤 Weiter sprechen';if(S.run&&!pending)render()};
   try{rec.start()}catch(e){rec=null}
   return true;
