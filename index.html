@@ -155,26 +155,36 @@ function takePlace(s,known){
 }
 function parseOne(raw,today,known,defDate){
   const D=takeDate(raw,today);let date=D.date||defDate||today;
-  const cl=D.rest.split(/[,;!?]+|\.(?!\d)|\s+und\s+|\s+dann\s+|\s+danach\s+|\s+anschließend\s+|\s+außerdem\s+/i).map(x=>x.trim()).filter(Boolean);
+  const cl=D.rest.split(/[,;!?]+|\.(?!\d)|\s+und\s+|\s+danach\s+|\s+anschließend\s+|\s+außerdem\s+/i).map(x=>x.trim()).filter(Boolean);
   let work=[],pz=[],dur=0,act=[],place='';
   const P=/pause|mittag|frühstück|gegessen|essen\b/i;
+  let carry=false,bisT=[];
   for(const c0 of cl){let c=pre(c0);const t=times(c);
-    if(P.test(c)){pz.push(...t);const n=c.toLowerCase();
+    if(P.test(c)&&!t.length&&!/(\d+)\s*min|stunde/i.test(c)){carry=true;continue}
+    if(P.test(c)||(carry&&t.length)){carry=false;pz.push(...t);const n=c.toLowerCase();
       const dm=n.match(/(\d+)\s*min/);if(dm)dur=+dm[1];else if(/dreiviertel stunde/.test(n))dur=45;else if(/halbe stunde/.test(n))dur=30;else if(/anderthalb|1:5 stunden/.test(n))dur=90;else if(/(eine|\b1) stunde/.test(n))dur=60;
       continue}
-    work.push(...t);
+    carry=false;work.push(...t);{const R=/\bbis\s+(?:um\s+)?(?:halb |viertel nach |viertel vor |dreiviertel )?\d/gi;let m;while((m=R.exec(c))){const tt=times(c.slice(m.index));if(tt.length)bisT.push(tt[0])}}
     let r=c.replace(TRX(),' ');
     const pl=takePlace(r,known);if(pl.place&&!place)place=pl.place;r=pl.rest;
     r=r.replace(/\b(uhr|von|bis|ab|zwischen|gearbeitet|arbeit|gewesen|war|bin|ich|habe|hab|hat|haben|wir|wieder|dort|da|die ganze zeit|den ganzen tag|ganzen tag|also|äh|ähm|halt|so)\b/gi,' ').replace(/^\s*(der|die|das|am)\s+/i,' ').replace(/\b\d{1,2}\b/g,' ').replace(/^[\s:–-]+|[\s:–-]+$/g,'').replace(/\s+/g,' ').trim();
     if(r&&!/^((auf der|die)\s+)?baustelle$|^(gemacht|auch|so|ja|also|äh|ähm)$/i.test(r)&&r.length>2)act.push(r.charAt(0).toUpperCase()+r.slice(1));
+    else act.push(null);
   }
-  let start=work[0]||null,end=work.length>1?work[work.length-1]:null;if(end)end=pm(end,7);
+  let start=work[0]||null,end=null;const mn=x=>x[0]*60+x[1];
+  const cand=(bisT.length?bisT:work.slice(1)).map(x=>pm(x,7));if(cand.length)end=cand.reduce((a,b)=>mn(b)>mn(a)?b:a);
   const pauses=[];pz=pz.map(x=>pm(x,6));
   for(let i=0;i+1<pz.length;i+=2)pauses.push({start:fmt(pz[i]),end:fmt(pz[i+1])});
   if(!pauses.length&&(pz.length||dur)){const s=pz[0]||[12,0],e=s[0]*60+s[1]+(dur||30);pauses.push({start:fmt(s),end:fmt([Math.floor(e/60)%24,e%60])})}
   const off=raw.match(/\b(urlaub|krank|feiertag|berufsschule|frei)\b/i);
   if(off&&!start){const w=off[1].charAt(0).toUpperCase()+off[1].slice(1).toLowerCase();return{date,start:'',end:'',pauses:[],place:w,text:act.filter(x=>x.toLowerCase()!==off[1].toLowerCase()).join(', ')}}
-  return{date,start:start?fmt(start):'',end:end?fmt(end):'',pauses,place,text:act.join(', ')};
+  const BAD=/\b(angefangen|aufgehört|gewesen|gegangen|gekommen|gearbeitet|gegessen|geregnet|gefahren|gestartet|losgegangen)\b/i;
+  const GOOD=/\b(ge\w{3,}(t|en)|\w{3,}iert|streichen|malen|tapezieren|spachteln|lackieren|schleifen|abkleben|grundieren|verputzen|putzen|abdecken|aufräumen|ausbessern|vorbereiten|abschleifen|kleben|verfugen|silikon\w*|fassade|tapete\w*|anstrich|lack\w*|farbe)\b/i;
+  let keep=[],prev=false;for(const a of act){if(!a){prev=false;continue}const w=a.split(/\s+/).length;
+    if(GOOD.test(a)&&!(BAD.test(a)&&!GOOD.test(a.replace(BAD,'')))){keep.push(a);prev=true}else if(prev&&w<=3&&!BAD.test(a)&&!/\b(tag|wetter|chef|kaffee|moin|hallo|weiter|feierabend|schluss|los)\b/i.test(a)){keep.push(a);prev=true}else prev=false}
+  if(!keep.length)keep=act.filter(Boolean);
+  keep=keep.map(a=>a.replace(/^(erst|zuerst|dann|danach)\s+/i,'').replace(/\s+(dann|danach)\s+(die\s+|das\s+|den\s+)?/gi,', ').replace(/^./,c=>c.toUpperCase()));
+  return{date,start:start?fmt(start):'',end:end?fmt(end):'',pauses,place,text:keep.join(', ')};
 }
 /* mehrere Tage in einem Rutsch */
 function parseText(raw,today,known){
